@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>LINE LIFF GPS</title>
+  <script src="https://static.line-scdn.net/liff/edge/versions/2.1.13/sdk.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&family=Roboto&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Lora', serif;
+      margin: 0;
+      background: linear-gradient(135deg, #f0f4f8, #dfe9ec);
+      background-size: cover;
+      background-attachment: fixed;
+      color: #333;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start; 
+      min-height: 100vh;
+      text-align: center;
+      overscroll-behavior: none;
+      padding: 20px;
+      box-shadow: inset 0 0 100px rgba(0,0,0,0.1);
+      overflow: auto;
+    }
+
+    h1 {
+      font-size: 1.8em; 
+      margin-top: 30px;
+      color: #2e4a62; 
+      white-space: normal; 
+      letter-spacing: 0.05em; 
+      max-width: 100%; 
+      padding: 0 10px;
+    }
+
+    nav {
+      margin: 20px 0;
+      z-index: 1;
+    }
+
+    button {
+      padding: 10px 15px;
+      font-size: 0.9em;
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #8ecae6, #219ebc);
+      color: #fff;
+      transition: background 0.3s, box-shadow 0.3s;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    button:hover {
+      background: linear-gradient(135deg, #219ebc, #023047);
+      box-shadow: 0 8px 12px rgba(0,0,0,0.2);
+    }
+
+    input[type="text"], input[type="datetime-local"], select {
+      padding: 12px;
+      font-size: 1em;
+      width: 80%;
+      max-width: 500px;
+      margin: 10px auto;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+      background: #fff;
+      transition: border-color 0.3s;
+    }
+
+    input:focus, select:focus {
+      border-color: #219ebc;
+      outline: none;
+    }
+
+    #result, #resultLeave, #leaveListResult {
+      margin-top: 20px;
+      font-size: 1.2em;
+      color: #ff4d4d;
+    }
+
+    .tab {
+      display: none;
+    }
+
+    .active {
+      display: block;
+    }
+
+    .nav-container {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <div>
+    <h1>Finetek Management System</h1>
+    <nav class="nav-container">
+      <button onclick="showTab('checkin')">打卡系統</button>
+      <button onclick="showTab('leave')">請假系統</button>
+      <button onclick="showTab('leaveList')">請假名單</button>
+      <button onclick="showTab('overtime')">加班時數</button>
+    </nav>
+
+    <!-- Check-in System -->
+    <div id="checkin" class="tab active">
+      <input type="text" id="userNameInput" placeholder="用戶名" readonly>
+      <br>
+      <select id="statusSelect">
+        <option value="上班">上班</option>
+        <option value="出差">出差</option>
+        <option value="下班">下班</option>
+      </select>
+      <br>
+      <input type="text" id="taskInput" placeholder="今日工作事項">
+      <br>
+      <button onclick="handleCheckIn()">打卡</button>
+      <div id="result"></div>
+    </div>
+
+    <!-- Leave Request System -->
+    <div id="leave" class="tab">
+      <input type="text" id="userNameLeave" placeholder="用戶名" readonly>
+      <br>
+      <label for="startTimeInput">請假開始時間:</label>
+      <input type="datetime-local" id="startTimeInput">
+      <br>
+      <label for="endTimeInput">請假結束時間:</label>
+      <input type="datetime-local" id="endTimeInput">
+      <br>
+      <label for="reasonInput">請假原因填寫:</label>
+      <input type="text" id="reasonInput" placeholder="請輸入請假原因">
+      <br>
+      <button onclick="handleLeaveRequest()">提出申請</button>
+      <div id="resultLeave"></div>
+    </div>
+
+    <!-- Leave List -->
+    <div id="leaveList" class="tab">
+      <div id="leaveListResult"></div>
+    </div>
+
+    <!-- Overtime -->
+    <div id="overtime" class="tab">
+      <div id="overtimeResult"></div>
+    </div>
+  </div>
+
+  <script>
+    let latitude = null;
+    let longitude = null;
+
+    // 設定視窗高度
+    let vh = window.innerHeight * 0.01;
+    document.documentElement.style.setProperty('--vh', `${vh}px`);
+
+    window.addEventListener('resize', () => {
+      let vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+    });
+
+    window.onload = function() {
+      console.log('Window loaded');
+      
+      liff.init({ liffId: "2006394040-8akNQwKK" }, () => {
+        console.log('LIFF 初始化成功');
+
+        if (!liff.isLoggedIn()) {
+          console.log('用戶未登入，重定向到登入頁面...');
+          liff.login();
+        } else {
+          console.log('用戶已經登入。');
+          liff.getProfile()
+            .then(profile => {
+              console.log('已獲取個人資料:', profile);
+              document.getElementById('userNameInput').value = profile.displayName;
+              document.getElementById('userNameLeave').value = profile.displayName;
+            })
+            .catch(error => {
+              console.error('獲取個人資料錯誤:', error);
+              document.getElementById('result').innerText = '獲取用戶信息失敗';
+            });
+        }
+      }, err => {
+        console.error('LIFF 初始化失敗:', err);
+        document.getElementById('result').innerText = '初始化失敗，請檢查控制台日誌。';
+      });
+    };
+
+    function handleCheckIn() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            latitude = position.coords.latitude;
+            longitude = position.coords.longitude;
+            const checkInTime = new Date();
+            getGeocodedAddress(latitude, longitude)
+              .then(address => {
+                submitTask(address, checkInTime);
+              });
+          },
+          showError
+        );
+      } else {
+        document.getElementById('result').innerText = "此瀏覽器不支持地理位置服務。";
+      }
+    }
+
+    function getGeocodedAddress(lat, lon) {
+      const apiKey = '00ab1a9eba20418e8bcf08826ea5396d';
+      const url = `https://api.opencagedata.com/geocode/v1/json?q=${lat}+${lon}&key=${apiKey}`;
+      return fetch(url)
+        .then(response => response.json())
+        .then(data => {
+          if (data.results && data.results.length > 0) {
+            return data.results[0].formatted;
+          } else {
+            return '地址未找到';
+          }
+        })
+        .catch(error => {
+          console.error('地理編碼錯誤:', error);
+          return '地址未找到';
+        });
+    }
+
+    function submitTask(address, checkInTime) {
+      const task = document.getElementById('taskInput').value;
+      const userName = document.getElementById('userNameInput').value;
+      const status = document.getElementById('statusSelect').value;
+
+      if (task && userName) {
+        if (latitude !== null && longitude !== null) {
+          const message = `員工: ${userName}\n工作事項: ${task}\n位置: ${address}\n打卡時間: ${checkInTime}\n打卡狀態: ${status}`;
+          liff.sendMessages([{
+            'type': 'text',
+            'text': message
+          }]).then(function () {
+            document.getElementById('result').innerText = '打卡成功';
+            liff.closeWindow();
+          }).catch(function (error) {
+            document.getElementById('result').innerText = '發送消息失敗: ' + error;
+            console.error('發送消息錯誤:', error);
+          });
+        } else {
+          document.getElementById('result').innerText = "未能獲取位置";
+        }
+      } else {
+        document.getElementById('result').innerText = "請輸入工作事項";
+      }
+    }
+
+    function showError(error) {
+      switch(error.code) {
+        case error.PERMISSION_DENIED:
+          document.getElementById('result').innerText = "使用者拒絕提供位置權限。";
+          break;
+        case error.POSITION_UNAVAILABLE:
+          document.getElementById('result').innerText = "無法獲取位置。";
+          break;
+        case error.TIMEOUT:
+          document.getElementById('result').innerText = "請求位置超時。";
+          break;
+        case error.UNKNOWN_ERROR:
+          document.getElementById('result').innerText = "發生未知錯誤。";
+          break;
+      }
+    }
+
+    function showTab(tabName) {
+      const tabs = document.querySelectorAll('.tab');
+      tabs.forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.getElementById(tabName).classList.add('active');
+      if (tabName === 'leaveList') {
+        fetchLeaveList();
+      }
+      if (tabName === 'overtime') {
+        fetchOvertime();
+      }
+    }
+
+    function fetchLeaveList() {
+      const url = 'https://script.google.com/macros/s/AKfycbwwtGwDwE5Dq8Rlu-40zawEpnKc1lt72BdcMhQh5EbK7wEwuecMhQvpCMHTcTpi-qSMrA/exec';
+      fetch(url)
+        .then(response => response.json())
+        .then(data => {
+          const leaveListDiv = document.getElementById('leaveListResult');
+          leaveListDiv.innerHTML = '';
+          if (data.length === 0) {
+            leaveListDiv.innerHTML = '目前無請假資料';
+          } else {
+            data.forEach(item => {
+              const leaveItem = document.createElement('div');
+              leaveItem.innerHTML = `
+                <p>員工: ${item.name}</p>
+                <p>開始時間: ${item.start_time}</p>
+                <p>結束時間: ${item.end_time}</p>
+                <p>原因: ${item.reason}</p>
+                <hr>
+              `;
+              leaveListDiv.appendChild(leaveItem);
+            });
+          }
+        })
+        .catch(error => {
+          document.getElementById('leaveListResult').innerText = '無法獲取請假資料';
+          console.error('獲取請假資料錯誤:', error);
+        });
+    }
+
+    function fetchOvertime() {
+      const url = 'https://script.google.com/macros/s/AKfycbwwtGwDwE5Dq8Rlu-40zawEpnKc1lt72BdcMhQh5EbK7wEwuecMhQvpCMHTcTpi-qSMrA/exec';
+      fetch(url)
+        .then(response => response.json())
+        .then(data => {
+          let overtimeTotal = 0;
+          const overtimeDiv = document.getElementById('overtimeResult');
+          overtimeDiv.innerHTML = '';
+          if (data.length === 0) {
+            overtimeDiv.innerHTML = '目前無加班記錄';
+          } else {
+            data.forEach(item => {
+              const checkInTime = new Date(item.check_in_time);
+              const overtime = calculateOvertime(checkInTime);
+              overtimeTotal += overtime;
+              const overtimeItem = document.createElement('div');
+              overtimeItem.innerHTML = `
+                <p>員工: ${item.name}</p>
+                <p>打卡時間: ${checkInTime}</p>
+                <p>加班時數: ${overtime} 小時</p>
+                <hr>
+              `;
+              overtimeDiv.appendChild(overtimeItem);
+            });
+            overtimeDiv.innerHTML += `<p>本月總加班時數: ${overtimeTotal} 小時</p>`;
+          }
+        })
+        .catch(error => {
+          document.getElementById('overtimeResult').innerText = '無法獲取加班資料';
+          console.error('獲取加班資料錯誤:', error);
+        });
+    }
+
+    function calculateOvertime(checkInTime) {
+      const standardEndTime = new Date(checkInTime);
+      standardEndTime.setHours(18, 30, 0, 0);
+      if (checkInTime > standardEndTime) {
+        const overtime = (checkInTime - standardEndTime) / 3600000; // 轉換為小時
+        return overtime.toFixed(2); // 保留2位小數
+      }
+      return 0;
+    }
+
+    function handleLeaveRequest() {
+      const name = document.getElementById('userNameLeave').value;
+      const startTime = document.getElementById('startTimeInput').value;
+      const endTime = document.getElementById('endTimeInput').value;
+      const reason = document.getElementById('reasonInput').value;
+
+      if (name && startTime && endTime && reason) {
+        const leaveData = {
+          name,
+          start_time: startTime,
+          end_time: endTime,
+          reason
+        };
+
+        fetch('https://script.google.com/macros/s/AKfycbwwtGwDwE5Dq8Rlu-40zawEpnKc1lt72BdcMhQh5EbK7wEwuecMhQvpCMHTcTpi-qSMrA/exec', {
+          method: 'POST',
+          body: JSON.stringify(leaveData)
+        })
+        .then(response => response.json())
+        .then(result => {
+          document.getElementById('resultLeave').innerText = '請假申請已提交';
+        })
+        .catch(error => {
+          document.getElementById('resultLeave').innerText = '請假申請提交失敗';
+          console.error('提交請假資料錯誤:', error);
+        });
+      } else {
+        document.getElementById('resultLeave').innerText = '請填寫所有請假信息';
+      }
+    }
+  </script>
+</body>
+</html>
